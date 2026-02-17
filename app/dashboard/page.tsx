@@ -16,19 +16,25 @@ export default function DashboardPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
-    const user = getUser()
-    if (!user) return
+    async function load() {
+      const user = await getUser()
+      if (!user) return
 
-    const clients = getClients(user.id).filter(c => c.isActive)
-    const teamMembers = getTeamMembers(user.id)
-    const timeEntries = getTimeEntries(user.id)
+      const [clients, teamMembers, timeEntries] = await Promise.all([
+        getClients(user.id),
+        getTeamMembers(user.id),
+        getTimeEntries(user.id),
+      ])
 
-    const profs = clients.map(client =>
-      calculateClientProfitability(client, timeEntries, teamMembers)
-    )
+      const profs = clients
+        .filter(c => c.isActive)
+        .map(client => calculateClientProfitability(client, timeEntries, teamMembers))
 
-    setProfitabilities(profs)
-    setLoading(false)
+      setProfitabilities(profs)
+      setLoading(false)
+    }
+
+    load()
   }, [])
 
   const summary = calculateMonthlySummary(profitabilities)

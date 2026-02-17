@@ -27,15 +27,21 @@ export default function ClientsPage() {
   const [form, setForm] = useState(defaultForm)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [userId, setUserId] = useState<string>('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const user = getUser()
-    if (!user) return
-    setUserId(user.id)
-    setClients(getClients(user.id))
+    async function load() {
+      const user = await getUser()
+      if (!user) return
+      setUserId(user.id)
+      setClients(await getClients(user.id))
+    }
+    load()
   }, [])
 
-  const refresh = () => setClients(getClients(userId))
+  const refresh = async (uid = userId) => {
+    setClients(await getClients(uid))
+  }
 
   const openCreate = () => {
     setForm(defaultForm)
@@ -54,11 +60,12 @@ export default function ClientsPage() {
     setShowForm(true)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const retainer = parseFloat(form.monthlyRetainer)
     if (isNaN(retainer) || retainer <= 0) return
 
+    setLoading(true)
     const client: Client = {
       id: editingId || uuidv4(),
       userId,
@@ -71,21 +78,22 @@ export default function ClientsPage() {
         : new Date().toISOString(),
     }
 
-    saveClient(client)
-    refresh()
+    await saveClient(client)
+    await refresh()
     setShowForm(false)
     setEditingId(null)
+    setLoading(false)
   }
 
-  const handleDelete = (id: string) => {
-    deleteClient(id)
-    refresh()
+  const handleDelete = async (id: string) => {
+    await deleteClient(id)
+    await refresh()
     setDeleteConfirm(null)
   }
 
-  const toggleActive = (client: Client) => {
-    saveClient({ ...client, isActive: !client.isActive })
-    refresh()
+  const toggleActive = async (client: Client) => {
+    await saveClient({ ...client, isActive: !client.isActive })
+    await refresh()
   }
 
   const activeClients = clients.filter(c => c.isActive)
@@ -190,9 +198,10 @@ export default function ClientsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {editingId ? 'Save Changes' : 'Add Client'}
+                  {loading ? 'Saving...' : editingId ? 'Save Changes' : 'Add Client'}
                 </button>
               </div>
             </form>

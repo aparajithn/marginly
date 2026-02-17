@@ -22,11 +22,12 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
-      const result = register(email, password, name)
+      const result = await register(email, password, name)
       if (result.success && result.user) {
         // Seed demo data for new users
-        seedDemoData(result.user.id)
+        await seedDemoData(result.user.id)
         router.push('/dashboard')
+        router.refresh()
       } else {
         setError(result.error || 'Registration failed')
       }

@@ -24,17 +24,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
-    const u = getUser()
-    if (!u) {
-      router.push('/login')
-    } else {
-      setUser(u)
-    }
+    getUser().then(u => {
+      if (!u) {
+        router.push('/login')
+      } else {
+        setUser(u)
+      }
+    })
   }, [router])
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     router.push('/')
+    router.refresh()
   }
 
   if (!user) return null

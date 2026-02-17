@@ -29,23 +29,36 @@ export default function TimeEntriesPage() {
   const [filterClient, setFilterClient] = useState<string>('')
   const [filterMember, setFilterMember] = useState<string>('')
   const [userId, setUserId] = useState<string>('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const user = getUser()
-    if (!user) return
-    setUserId(user.id)
-    setClients(getClients(user.id).filter(c => c.isActive))
-    setMembers(getTeamMembers(user.id).filter(m => m.isActive))
-    setEntries(getTimeEntries(user.id))
+    async function load() {
+      const user = await getUser()
+      if (!user) return
+      setUserId(user.id)
+      const [clientData, memberData, entryData] = await Promise.all([
+        getClients(user.id),
+        getTeamMembers(user.id),
+        getTimeEntries(user.id),
+      ])
+      setClients(clientData.filter(c => c.isActive))
+      setMembers(memberData.filter(m => m.isActive))
+      setEntries(entryData)
+    }
+    load()
   }, [])
 
-  const refresh = (uid = userId) => setEntries(getTimeEntries(uid))
+  const refresh = async (uid = userId) => {
+    const entryData = await getTimeEntries(uid)
+    setEntries(entryData)
+  }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const hours = parseFloat(form.hours)
     if (!form.clientId || !form.teamMemberId || isNaN(hours) || hours <= 0) return
 
+    setLoading(true)
     const entry: TimeEntry = {
       id: uuidv4(),
       userId,
@@ -57,15 +70,16 @@ export default function TimeEntriesPage() {
       createdAt: new Date().toISOString(),
     }
 
-    saveTimeEntry(entry)
-    refresh()
+    await saveTimeEntry(entry)
+    await refresh()
     setForm(f => ({ ...defaultForm, clientId: f.clientId, teamMemberId: f.teamMemberId }))
     setShowForm(false)
+    setLoading(false)
   }
 
-  const handleDelete = (id: string) => {
-    deleteTimeEntry(id)
-    refresh()
+  const handleDelete = async (id: string) => {
+    await deleteTimeEntry(id)
+    await refresh()
     setDeleteConfirm(null)
   }
 
@@ -89,14 +103,21 @@ export default function TimeEntriesPage() {
   // This month summary
   const now = new Date()
   const thisMonth = entries.filter(e => {
-    const d = parseISO(e.date)
-    return isWithinInterval(d, { start: startOfMonth(now), end: endOfMonth(now) })
+    try {
+      const d = parseISO(e.date)
+      return isWithinInterval(d, { start: startOfMonth(now), end: endOfMonth(now) })
+    } catch {
+      return false
+    }
   })
   const thisMonthHours = thisMonth.reduce((sum, e) => sum + e.hours, 0)
   const thisMonthCost = thisMonth.reduce((sum, e) => {
     const m = memberMap.get(e.teamMemberId)
     return sum + (m ? e.hours * m.costRate : 0)
   }, 0)
+
+  // Need to also fetch all members (including inactive) for display in past entries
+  const allMemberMap = new Map(members.map(m => [m.id, m]))
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -202,7 +223,7 @@ export default function TimeEntriesPage() {
                   <span className="text-indigo-600 font-medium">Cost: </span>
                   <span className="text-indigo-800 font-bold">
                     {formatCurrency(
-                      (memberMap.get(form.teamMemberId)?.costRate || 0) * parseFloat(form.hours)
+                      (allMemberMap.get(form.teamMemberId)?.costRate || 0) * parseFloat(form.hours)
                     )}
                   </span>
                 </div>
@@ -218,9 +239,10 @@ export default function TimeEntriesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  Log Time
+                  {loading ? 'Saving...' : 'Log Time'}
                 </button>
               </div>
             </form>
@@ -276,10 +298,15 @@ export default function TimeEntriesPage() {
       ) : (
         <div className="space-y-6">
           {Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a)).map(([monthKey, monthEntries]) => {
-            const monthDate = parseISO(`${monthKey}-01`)
+            let monthDate: Date
+            try {
+              monthDate = parseISO(`${monthKey}-01`)
+            } catch {
+              return null
+            }
             const monthHours = monthEntries.reduce((sum, e) => sum + e.hours, 0)
             const monthCost = monthEntries.reduce((sum, e) => {
-              const m = memberMap.get(e.teamMemberId)
+              const m = allMemberMap.get(e.teamMemberId)
               return sum + (m ? e.hours * m.costRate : 0)
             }, 0)
 
@@ -301,7 +328,7 @@ export default function TimeEntriesPage() {
                 <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                   {monthEntries.map((entry, idx) => {
                     const client = clientMap.get(entry.clientId)
-                    const member = memberMap.get(entry.teamMemberId)
+                    const member = allMemberMap.get(entry.teamMemberId)
                     const cost = member ? entry.hours * member.costRate : 0
 
                     return (

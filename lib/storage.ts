@@ -1,146 +1,158 @@
-import { v4 as uuidv4 } from 'uuid'
-import { Client, TeamMember, TimeEntry, User } from './types'
+import { createClient } from '@/lib/supabase/client'
+import { Client, TeamMember, TimeEntry } from './types'
 
-const KEYS = {
-  USERS: 'marginly_users',
-  CURRENT_USER: 'marginly_current_user',
-  CLIENTS: 'marginly_clients',
-  TEAM_MEMBERS: 'marginly_team_members',
-  TIME_ENTRIES: 'marginly_time_entries',
+// ─── Clients ──────────────────────────────────────────────────────────────────
+
+export async function getClients(userId: string): Promise<Client[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+
+  if (error || !data) return []
+
+  return data.map(row => ({
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    monthlyRetainer: Number(row.monthly_retainer),
+    color: row.color,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+  }))
 }
 
-function getItem<T>(key: string): T[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
+export async function saveClient(client: Client): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('clients').upsert({
+    id: client.id,
+    user_id: client.userId,
+    name: client.name,
+    monthly_retainer: client.monthlyRetainer,
+    color: client.color,
+    is_active: client.isActive,
+    created_at: client.createdAt,
+  })
+}
+
+export async function deleteClient(id: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('clients').delete().eq('id', id)
+}
+
+export async function getClientById(id: string): Promise<Client | undefined> {
+  const supabase = createClient()
+  const { data } = await supabase.from('clients').select('*').eq('id', id).single()
+  if (!data) return undefined
+  return {
+    id: data.id,
+    userId: data.user_id,
+    name: data.name,
+    monthlyRetainer: Number(data.monthly_retainer),
+    color: data.color,
+    isActive: data.is_active,
+    createdAt: data.created_at,
   }
 }
 
-function setItem<T>(key: string, data: T[]): void {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(key, JSON.stringify(data))
+// ─── Team Members ─────────────────────────────────────────────────────────────
+
+export async function getTeamMembers(userId: string): Promise<TeamMember[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+
+  if (error || !data) return []
+
+  return data.map(row => ({
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    costRate: Number(row.cost_rate),
+    isActive: row.is_active,
+    createdAt: row.created_at,
+  }))
 }
 
-// Users
-export function getUsers(): User[] {
-  return getItem<User>(KEYS.USERS)
+export async function saveTeamMember(member: TeamMember): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('team_members').upsert({
+    id: member.id,
+    user_id: member.userId,
+    name: member.name,
+    cost_rate: member.costRate,
+    is_active: member.isActive,
+    created_at: member.createdAt,
+  })
 }
 
-export function saveUser(user: User): void {
-  const users = getUsers()
-  const idx = users.findIndex(u => u.id === user.id)
-  if (idx >= 0) {
-    users[idx] = user
-  } else {
-    users.push(user)
-  }
-  setItem(KEYS.USERS, users)
+export async function deleteTeamMember(id: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('team_members').delete().eq('id', id)
 }
 
-export function getUserByEmail(email: string): User | undefined {
-  return getUsers().find(u => u.email.toLowerCase() === email.toLowerCase())
+// ─── Time Entries ─────────────────────────────────────────────────────────────
+
+export async function getTimeEntries(userId: string): Promise<TimeEntry[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('time_entries')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+
+  if (error || !data) return []
+
+  return data.map(row => ({
+    id: row.id,
+    userId: row.user_id,
+    clientId: row.client_id,
+    teamMemberId: row.team_member_id,
+    date: row.date,
+    hours: Number(row.hours),
+    note: row.note || '',
+    createdAt: row.created_at,
+  }))
 }
 
-export function getCurrentUser(): User | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = localStorage.getItem(KEYS.CURRENT_USER)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
+export async function saveTimeEntry(entry: TimeEntry): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('time_entries').upsert({
+    id: entry.id,
+    user_id: entry.userId,
+    client_id: entry.clientId,
+    team_member_id: entry.teamMemberId,
+    date: entry.date,
+    hours: entry.hours,
+    note: entry.note,
+    created_at: entry.createdAt,
+  })
 }
 
-export function setCurrentUser(user: User | null): void {
-  if (typeof window === 'undefined') return
-  if (user) {
-    localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user))
-  } else {
-    localStorage.removeItem(KEYS.CURRENT_USER)
-  }
+export async function deleteTimeEntry(id: string): Promise<void> {
+  const supabase = createClient()
+  await supabase.from('time_entries').delete().eq('id', id)
 }
 
-// Clients
-export function getClients(userId: string): Client[] {
-  return getItem<Client>(KEYS.CLIENTS).filter(c => c.userId === userId)
+export async function getTimeEntriesByClient(userId: string, clientId: string): Promise<TimeEntry[]> {
+  const entries = await getTimeEntries(userId)
+  return entries.filter(e => e.clientId === clientId)
 }
 
-export function saveClient(client: Client): void {
-  const all = getItem<Client>(KEYS.CLIENTS)
-  const idx = all.findIndex(c => c.id === client.id)
-  if (idx >= 0) {
-    all[idx] = client
-  } else {
-    all.push(client)
-  }
-  setItem(KEYS.CLIENTS, all)
-}
+// ─── Seed Demo Data ───────────────────────────────────────────────────────────
 
-export function deleteClient(id: string): void {
-  const all = getItem<Client>(KEYS.CLIENTS).filter(c => c.id !== id)
-  setItem(KEYS.CLIENTS, all)
-}
-
-export function getClientById(id: string): Client | undefined {
-  return getItem<Client>(KEYS.CLIENTS).find(c => c.id === id)
-}
-
-// Team Members
-export function getTeamMembers(userId: string): TeamMember[] {
-  return getItem<TeamMember>(KEYS.TEAM_MEMBERS).filter(m => m.userId === userId)
-}
-
-export function saveTeamMember(member: TeamMember): void {
-  const all = getItem<TeamMember>(KEYS.TEAM_MEMBERS)
-  const idx = all.findIndex(m => m.id === member.id)
-  if (idx >= 0) {
-    all[idx] = member
-  } else {
-    all.push(member)
-  }
-  setItem(KEYS.TEAM_MEMBERS, all)
-}
-
-export function deleteTeamMember(id: string): void {
-  const all = getItem<TeamMember>(KEYS.TEAM_MEMBERS).filter(m => m.id !== id)
-  setItem(KEYS.TEAM_MEMBERS, all)
-}
-
-// Time Entries
-export function getTimeEntries(userId: string): TimeEntry[] {
-  return getItem<TimeEntry>(KEYS.TIME_ENTRIES).filter(e => e.userId === userId)
-}
-
-export function saveTimeEntry(entry: TimeEntry): void {
-  const all = getItem<TimeEntry>(KEYS.TIME_ENTRIES)
-  const idx = all.findIndex(e => e.id === entry.id)
-  if (idx >= 0) {
-    all[idx] = entry
-  } else {
-    all.push(entry)
-  }
-  setItem(KEYS.TIME_ENTRIES, all)
-}
-
-export function deleteTimeEntry(id: string): void {
-  const all = getItem<TimeEntry>(KEYS.TIME_ENTRIES).filter(e => e.id !== id)
-  setItem(KEYS.TIME_ENTRIES, all)
-}
-
-export function getTimeEntriesByClient(userId: string, clientId: string): TimeEntry[] {
-  return getTimeEntries(userId).filter(e => e.clientId === clientId)
-}
-
-// Seed demo data
-export function seedDemoData(userId: string): void {
+export async function seedDemoData(userId: string): Promise<void> {
+  const { v4: uuidv4 } = await import('uuid')
   const now = new Date()
   const year = now.getFullYear()
   const month = now.getMonth()
 
-  const clients: Client[] = [
+  const clientsData: Client[] = [
     {
       id: uuidv4(), userId, name: 'Acme Corp', monthlyRetainer: 8000,
       color: '#6366f1', isActive: true, createdAt: new Date().toISOString()
@@ -155,7 +167,7 @@ export function seedDemoData(userId: string): void {
     },
   ]
 
-  const members: TeamMember[] = [
+  const membersData: TeamMember[] = [
     {
       id: uuidv4(), userId, name: 'Alex Rivera', costRate: 65,
       isActive: true, createdAt: new Date().toISOString()
@@ -170,31 +182,32 @@ export function seedDemoData(userId: string): void {
     },
   ]
 
-  clients.forEach(c => saveClient(c))
-  members.forEach(m => saveTeamMember(m))
+  await Promise.all(clientsData.map(c => saveClient(c)))
+  await Promise.all(membersData.map(m => saveTeamMember(m)))
 
-  const entries: TimeEntry[] = []
   const days = [3, 5, 7, 9, 11, 13, 15]
+  const entries: TimeEntry[] = []
+
   days.forEach(day => {
     entries.push({
-      id: uuidv4(), userId, clientId: clients[0].id,
-      teamMemberId: members[0].id,
+      id: uuidv4(), userId, clientId: clientsData[0].id,
+      teamMemberId: membersData[0].id,
       date: new Date(year, month, day).toISOString().split('T')[0],
       hours: 4, note: 'SEO optimization', createdAt: new Date().toISOString()
     })
     entries.push({
-      id: uuidv4(), userId, clientId: clients[1].id,
-      teamMemberId: members[1].id,
+      id: uuidv4(), userId, clientId: clientsData[1].id,
+      teamMemberId: membersData[1].id,
       date: new Date(year, month, day).toISOString().split('T')[0],
       hours: 3, note: 'PPC campaign management', createdAt: new Date().toISOString()
     })
     entries.push({
-      id: uuidv4(), userId, clientId: clients[2].id,
-      teamMemberId: members[2].id,
+      id: uuidv4(), userId, clientId: clientsData[2].id,
+      teamMemberId: membersData[2].id,
       date: new Date(year, month, day).toISOString().split('T')[0],
       hours: 5, note: 'Social media content', createdAt: new Date().toISOString()
     })
   })
 
-  entries.forEach(e => saveTimeEntry(e))
+  await Promise.all(entries.map(e => saveTimeEntry(e)))
 }

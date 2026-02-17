@@ -21,15 +21,21 @@ export default function TeamPage() {
   const [form, setForm] = useState(defaultForm)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [userId, setUserId] = useState<string>('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const user = getUser()
-    if (!user) return
-    setUserId(user.id)
-    setMembers(getTeamMembers(user.id))
+    async function load() {
+      const user = await getUser()
+      if (!user) return
+      setUserId(user.id)
+      setMembers(await getTeamMembers(user.id))
+    }
+    load()
   }, [])
 
-  const refresh = () => setMembers(getTeamMembers(userId))
+  const refresh = async (uid = userId) => {
+    setMembers(await getTeamMembers(uid))
+  }
 
   const openCreate = () => {
     setForm(defaultForm)
@@ -47,11 +53,12 @@ export default function TeamPage() {
     setShowForm(true)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const rate = parseFloat(form.costRate)
     if (isNaN(rate) || rate <= 0) return
 
+    setLoading(true)
     const member: TeamMember = {
       id: editingId || uuidv4(),
       userId,
@@ -63,21 +70,22 @@ export default function TeamPage() {
         : new Date().toISOString(),
     }
 
-    saveTeamMember(member)
-    refresh()
+    await saveTeamMember(member)
+    await refresh()
     setShowForm(false)
     setEditingId(null)
+    setLoading(false)
   }
 
-  const handleDelete = (id: string) => {
-    deleteTeamMember(id)
-    refresh()
+  const handleDelete = async (id: string) => {
+    await deleteTeamMember(id)
+    await refresh()
     setDeleteConfirm(null)
   }
 
-  const toggleActive = (member: TeamMember) => {
-    saveTeamMember({ ...member, isActive: !member.isActive })
-    refresh()
+  const toggleActive = async (member: TeamMember) => {
+    await saveTeamMember({ ...member, isActive: !member.isActive })
+    await refresh()
   }
 
   const active = members.filter(m => m.isActive)
@@ -177,9 +185,10 @@ export default function TeamPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  {editingId ? 'Save Changes' : 'Add Member'}
+                  {loading ? 'Saving...' : editingId ? 'Save Changes' : 'Add Member'}
                 </button>
               </div>
             </form>

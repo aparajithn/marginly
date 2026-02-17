@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { TrendingUp, Eye, EyeOff, Loader2 } from 'lucide-react'
-import { login } from '@/lib/auth'
-import { seedDemoData, getClients } from '@/lib/storage'
+import { login, register } from '@/lib/auth'
+import { getClients, seedDemoData } from '@/lib/storage'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -21,14 +21,15 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const result = login(email, password)
+      const result = await login(email, password)
       if (result.success && result.user) {
         // Seed demo data if new user has no clients
-        const clients = getClients(result.user.id)
+        const clients = await getClients(result.user.id)
         if (clients.length === 0) {
-          seedDemoData(result.user.id)
+          await seedDemoData(result.user.id)
         }
         router.push('/dashboard')
+        router.refresh()
       } else {
         setError(result.error || 'Login failed')
       }
@@ -47,23 +48,26 @@ export default function LoginPage() {
 
     try {
       // Try to login with demo account, create if doesn't exist
-      let result = login('demo@marginly.app', 'demo1234')
+      let result = await login('demo@marginly.app', 'demo1234')
       if (!result.success) {
         // Register demo user
-        const { register } = await import('@/lib/auth')
-        const regResult = register('demo@marginly.app', 'demo1234', 'Demo User')
+        const regResult = await register('demo@marginly.app', 'demo1234', 'Demo User')
         if (regResult.success && regResult.user) {
-          seedDemoData(regResult.user.id)
+          await seedDemoData(regResult.user.id)
           router.push('/dashboard')
+          router.refresh()
           return
         }
+        setError(regResult.error || 'Demo login failed')
+        return
       }
       if (result.success && result.user) {
-        const clients = getClients(result.user.id)
+        const clients = await getClients(result.user.id)
         if (clients.length === 0) {
-          seedDemoData(result.user.id)
+          await seedDemoData(result.user.id)
         }
         router.push('/dashboard')
+        router.refresh()
       }
     } catch {
       setError('Demo login failed')

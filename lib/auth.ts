@@ -1,90 +1,79 @@
-import { v4 as uuidv4 } from 'uuid'
+import { createClient } from '@/lib/supabase/client'
 import { User } from './types'
-import { setCurrentUser, getCurrentUser } from './storage'
 
-type StoredUser = { id: string; email: string; name: string; createdAt: string; passwordHash: string }
-
-function getUserByEmail(email: string): StoredUser | undefined {
-  if (typeof window === 'undefined') return undefined
-  const users: StoredUser[] = JSON.parse(localStorage.getItem('marginly_users') || '[]')
-  return users.find(u => u.email.toLowerCase() === email.toLowerCase())
-}
-
-// Simple hash for demo purposes (not production-safe)
-function hashPassword(password: string): string {
-  let hash = 0
-  for (let i = 0; i < password.length; i++) {
-    const char = password.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash
-  }
-  return hash.toString(16)
-}
-
-interface AuthResult {
+export interface AuthResult {
   success: boolean
   user?: User
   error?: string
 }
 
-export function register(email: string, password: string, name: string): AuthResult {
-  const existing = getUserByEmail(email)
-  if (existing) {
-    return { success: false, error: 'An account with this email already exists.' }
-  }
+export async function register(email: string, password: string, name: string): Promise<AuthResult> {
+  const supabase = createClient()
 
-  if (password.length < 6) {
-    return { success: false, error: 'Password must be at least 6 characters.' }
-  }
-
-  const user: User = {
-    id: uuidv4(),
+  const { data, error } = await supabase.auth.signUp({
     email,
+    password,
+    options: {
+      data: { name },
+    },
+  })
+
+  if (error || !data.user) {
+    return { success: false, error: error?.message || 'Registration failed' }
+  }
+
+  // Create profile
+  await supabase.from('profiles').upsert({
+    id: data.user.id,
+    email: data.user.email!,
     name,
-    createdAt: new Date().toISOString(),
-  }
-
-  // Store user with hashed password
-  const userWithHash = { ...user, passwordHash: hashPassword(password) }
-  if (typeof window !== 'undefined') {
-    const users = JSON.parse(localStorage.getItem('marginly_users') || '[]')
-    users.push(userWithHash)
-    localStorage.setItem('marginly_users', JSON.stringify(users))
-  }
-
-  setCurrentUser(user)
-  return { success: true, user }
-}
-
-export function login(email: string, password: string): AuthResult {
-  if (typeof window === 'undefined') return { success: false, error: 'Server error' }
-
-  const users: StoredUser[] = JSON.parse(localStorage.getItem('marginly_users') || '[]')
-  const userWithHash = users.find(u => u.email.toLowerCase() === email.toLowerCase())
-
-  if (!userWithHash) {
-    return { success: false, error: 'No account found with this email.' }
-  }
-
-  if (userWithHash.passwordHash !== hashPassword(password)) {
-    return { success: false, error: 'Incorrect password.' }
-  }
+  })
 
   const user: User = {
-    id: userWithHash.id,
-    email: userWithHash.email,
-    name: userWithHash.name,
-    createdAt: userWithHash.createdAt,
+    id: data.user.id,
+    email: data.user.email!,
+    name,
+    createdAt: data.user.created_at,
   }
 
-  setCurrentUser(user)
   return { success: true, user }
 }
 
-export function logout(): void {
-  setCurrentUser(null)
+export async function login(email: string, password: string): Promise<AuthResult> {
+  const supabase = createClient()
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+  if (error || !data.user) {
+    return { success: false, error: error?.message || 'Login failed' }
+  }
+
+  const name = data.user.user_metadata?.name || email.split('@')[0]
+  const user: User = {
+    id: data.user.id,
+    email: data.user.email!,
+    name,
+    createdAt: data.user.created_at,
+  }
+
+  return { success: true, user }
 }
 
-export function getUser(): User | null {
-  return getCurrentUser()
+export async function logout(): Promise<void> {
+  const supabase = createClient()
+  await supabase.auth.signOut()
+}
+
+export async function getUser(): Promise<User | null> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) return null
+
+  return {
+    id: user.id,
+    email: user.email!,
+    name: user.user_metadata?.name || user.email!.split('@')[0],
+    createdAt: user.created_at,
+  }
 }
